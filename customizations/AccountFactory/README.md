@@ -1,4 +1,6 @@
-```
+This python script uses AWS Service Catalog APIs to detect the `AWS Control Tower Account Factory`, and provision a new account based of the values passed through the input file `params.json`. If the input file is not passed, looks for the below command line flags for the required information.
+
+``` python
 usage: provision_account_customizations.py [-h] [-s SEMAIL] [-i SFNAME]
                                            [-l SLNAME] [-o OU] [-a ANAME]
                                            [-e AEMAIL] [-p PARAMS] [-r REGION]
