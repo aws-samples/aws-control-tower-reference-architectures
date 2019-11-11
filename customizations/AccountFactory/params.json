@@ -1,0 +1,26 @@
+[
+ {
+ "Value": "vinjak+ctire-sb22@amazon.com",
+ "Key": "SSOUserEmail"
+ },
+ {
+ "Value": "Vinjak",
+ "Key": "SSOUserFirstName"
+ },
+ {
+ "Value": "SB22",
+ "Key": "SSOUserLastName"
+ },
+ {
+ "Value": "Sandboxes",
+ "Key": "ManagedOrganizationalUnit"
+ },
+ {
+ "Value": "VinjakSB22",
+ "Key": "AccountName"
+ },
+ {
+ "Value": "vinjak+ctire-sb22@amazon.com",
+ "Key": "AccountEmail"
+ }
+]
