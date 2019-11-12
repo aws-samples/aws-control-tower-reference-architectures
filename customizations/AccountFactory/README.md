@@ -1,3 +1,15 @@
+
+Launch a Cloud9 instance and run everything via Cloud9 IDE.
+
+* To create a new instance for environment (EC2), go to Cloud9 Console, and select Create environment
+* Type in appropriate Name and Description to choose on Next step
+* Pick following options in Environment settings and choose Next step
+** Create a new instance for environment (EC2)
+** t2.micro (1 Gib RAM + 1 vCPU)
+** Ubuntu Server 18.04 LTS
+* Choose Create environment
+* Once the environment is ready.
+
 This python script uses AWS Service Catalog APIs to detect the `AWS Control Tower Account Factory`, and provision a new account based of the values passed through the input file `params.json`. If the input file is not passed, looks for the below command line flags for the required information.
 
 ```

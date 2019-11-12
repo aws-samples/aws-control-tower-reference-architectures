@@ -1,3 +1,18 @@
+#########################################################################################
+# Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.               #
+# Permission is hereby granted, free of charge, to any person obtaining a copy of this  #
+# software and associated documentation files (the "Software"), to deal in the Software #
+# without restriction, including without limitation the rights to use, copy, modify,    #
+# merge, publish, distribute, sublicense, and/or sell copies of the Software, and to    #
+# permit persons to whom the Software is furnished to do so.                            #
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,   #
+# INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A         #
+# PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT    #
+# HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION     #
+# OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE        #
+# SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                                #
+#########################################################################################
+
 import boto3
 import logging
 from time import sleep
@@ -5,7 +20,7 @@ from random import randint
 import json
 import sys
 import glob
-from argparse import RawTextHelpFormatter, ArgumentParser
+import argparse
 
 # Find the product Id, provisioning artifact Id of the Service Catalog Product
 def get_product_id(af_product_name):
@@ -77,18 +92,20 @@ def create_stack_set(custom_stack_set_name, custom_template_url,
     ''' Create stack set if doesn't exist already '''
 
     stack_exists = False
+    result = {'STATUS':'FAIL'}
 
     try:
         cft_ss_list = CFT.list_stack_sets()['Summaries']
     except Exception as e:
-        print('Unable to find the stacks' + str(e))
+                print('Unable to find the stacks' + str(e))
 
     for stack in cft_ss_list:
-        if stack['Status'] != 'DELETED' and stack['StackSetName'] == custom_stack_set_name:
+        if stack['Status'] == 'ACTIVE' and stack['StackSetName'] == custom_stack_set_name:
             stack_exists = True
 
-    if stack_exists:
+    if not stack_exists:
         try:
+            print('Creating stack set name'.format(custom_stack_set_name))
             result = CFT.create_stack_set(StackSetName = custom_stack_set_name, \
                             TemplateURL = custom_template_url, Parameters = parameters_keys, \
                             AdministrationRoleARN = master_account_admin_arn, \
@@ -96,13 +113,14 @@ def create_stack_set(custom_stack_set_name, custom_template_url,
         except Exception as e:
             print('Unable to create a stack set:' + str(e))
 
-        return(result)
+    return(result)
 
 
 def create_stack_instance(custom_stack_set_name, new_account_id, region):
     ''' Create Stack instance in an existing StackSet'''
 
     try:
+        print('Creating stack instance in account'.format(new_account_id))
         result = CFT.create_stack_instances(StackSetName=custom_stack_set_name, \
                                     Accounts=[new_account_id], Regions=[region])
     except Exception as e:
@@ -126,9 +144,9 @@ def provision_sc_product(prod_id, pa_id, prov_prod_name, input_params, RANDOM):
 
 
 if __name__ == '__main__':
-    parser = ArgumentParser(description=
-                            'Provision new AWS account using Account Factory product in AWS Service Catalog..'
-                            '\n\nUSAGE : python provision_account_customizations.py [--semail email-id] [--sfname name] [--slname name] [--ou name] [--aname name] [--aemail email-id]', formatter_class=RawTextHelpFormatter)
+    parser = argparse.ArgumentParser(description=
+                                     'Provision new AWS account using Account Factory product in AWS Service Catalog..'
+                                     'Usage example: python provision_account_customizations.py [--semail email-id] [--sfname name] [--slname name] [--ou name] [--aname name] [--aemail email-id]')
     parser.add_argument("-s", "--semail", type=str, help="SSOUserEmail")
     parser.add_argument("-i", "--sfname", type=str, default="alias", help="SSOUserFirstName")
     parser.add_argument("-l", "--slname", type=str, default="suffix", help="SSOUserLastName")
@@ -228,7 +246,7 @@ if __name__ == '__main__':
     # Query AWS Organization for email and obtain the new AWS account id
     new_account_id = get_new_account_id(data)
 
-    print('Creating the ServiceCatalog Portfolio StackSet')
+    print('Creating the Portfolio StackSet')
 
     # Create the Stackset if it doesn't exist. Provision new Custom Stack
     create_stack_set(custom_stack_set_name, custom_template_url, 
