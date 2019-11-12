@@ -1,6 +1,6 @@
 [
  {
- "Value": "vinjak+ctire-sb22@amazon.com",
+ "Value": "vinjak+ctire-sb33@amazon.com",
  "Key": "SSOUserEmail"
  },
  {
@@ -8,7 +8,7 @@
  "Key": "SSOUserFirstName"
  },
  {
- "Value": "SB22",
+ "Value": "SB33",
  "Key": "SSOUserLastName"
  },
  {
@@ -16,11 +16,11 @@
  "Key": "ManagedOrganizationalUnit"
  },
  {
- "Value": "VinjakSB22",
+ "Value": "VinjakSB33",
  "Key": "AccountName"
  },
  {
- "Value": "vinjak+ctire-sb22@amazon.com",
+ "Value": "vinjak+ctire-sb33@amazon.com",
  "Key": "AccountEmail"
  }
 ]
