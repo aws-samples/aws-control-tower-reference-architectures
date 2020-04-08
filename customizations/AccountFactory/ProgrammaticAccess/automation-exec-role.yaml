@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "Create automation execution role for HashiCorp Terraform."
+Description: "Create automation execution role for creating Sample Additional Role."
 
 Parameters:
   AdminAccountId:
