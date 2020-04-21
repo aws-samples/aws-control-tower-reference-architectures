@@ -1,3 +1,5 @@
+<h1>Enroll existing AWS accounts in to AWS Control Tower</h1>
+
 Since the launch of AWS Control Tower, customers have been asking for the ability to deploy AWS Control Tower in their existing AWS Organizations and to extend governance to those accounts in their organization.
 
 We are happy to announce that you can now deploy AWS Control Tower in your existing AWS Organizations. The accounts that you launched before deploying AWS Control Tower, what we refer to as unenrolled accounts, remain outside AWS Control Towers’ governance by default. These accounts must be enrolled in the AWS Control Tower explicitly.
