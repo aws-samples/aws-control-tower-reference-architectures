@@ -3,7 +3,8 @@ This python program `update_pp.py` provided under the open-source license to hel
 
 ### Usage
 
-<code>
+<pre style="padding-left: 40px;"><code class="lang-bash"><strong>usage: enroll_account.py -o -u|-e|-i -c
+</strong>
 usage: update_pp.py [-eflb]
 
 Update all provisioned Account Factory products sequentially.
@@ -18,7 +19,8 @@ optional arguments:
                         SSOUserLastName
   -b BLIST [BLIST ...], --blist BLIST [BLIST ...]
                         List of accounts to blacklist
-</code>
+
+</code></pre>
 
 ### Additional Information
 
