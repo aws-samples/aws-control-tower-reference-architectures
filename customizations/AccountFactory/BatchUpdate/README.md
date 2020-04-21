@@ -3,9 +3,8 @@ This python program `update_pp.py` provided under the open-source license to hel
 
 ### Usage
 
-<pre style="padding-left: 40px;"><code class="lang-bash"><strong>usage: enroll_account.py -o -u|-e|-i -c
+<pre style="padding-left: 40px;"><code class="lang-bash"><strong>usage: update_pp.py [-eflb]
 </strong>
-usage: update_pp.py [-eflb]
 
 Update all provisioned Account Factory products sequentially.
 
