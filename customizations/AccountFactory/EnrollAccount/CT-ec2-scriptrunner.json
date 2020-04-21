@@ -1,0 +1,179 @@
+{
+    "Description": "AWS EC2 instance to run CT existing account onboarding (fdp-1qj64b38g)",
+    "Metadata": {
+        "AWS::CloudFormation::Interface": {
+            "ParameterGroups": [
+                {
+                    "Label": {
+                        "default": "Network Configuration"
+                    },
+                    "Parameters": [
+                        "VPC",
+                        "RemoteAccessCIDR"
+                    ]
+                },
+                {
+                    "Label": {
+                        "default": "Linux Instance Configuration"
+                    },
+                    "Parameters": [
+                        "KeyPair",
+                        "LinuxInstanceType",
+                        "LatestAmiId"
+                    ]
+                }
+            ],
+            "ParameterLabels": {
+                "VPC": {
+                    "default": "VPC"
+                },
+                "KeyPair": {
+                    "default": "Key Pair"
+                },
+                "RemoteAccessCIDR": {
+                    "default": "Remote Access CIDR Block"
+                },
+                "LatestAmiId": {
+                    "default": "SSM key to the latest Amazon linux AMI"
+                }
+            }
+        }
+    },
+    "Parameters": {
+        "VPC": {
+            "Type": "AWS::EC2::VPC::Id",
+            "Description": "Select the VPC where the EC2 instances will be created",
+            "ConstraintDescription": "must be an existing VPC"
+        },
+        "KeyPair": {
+            "Description": "Name of existing EC2 key pair for Linux Instances",
+            "Type": "AWS::EC2::KeyPair::KeyName"
+        },
+        "RemoteAccessCIDR": {
+            "Description": "CIDR block to allow access to linux instances",
+            "Type": "String",
+            "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
+            "ConstraintDescription": "must be a valid IP CIDR range of the form x.x.x.x/x."
+        },
+        "LatestAmiId": {
+            "Type": "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>",
+            "Default": "/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2"            
+        }
+    },
+    
+    "Resources": {
+      "SSHSecurityGroup" : {
+        "Type" : "AWS::EC2::SecurityGroup",
+        "Properties" : {
+          "VpcId" : {"Ref" : "VPC"},
+          "GroupDescription" : "Enable ssh access",
+          "SecurityGroupIngress" : [ 
+              {"Description":"allow icmp", "IpProtocol": "icmp","FromPort": "-1","ToPort": "-1", "CidrIp": { "Ref": "RemoteAccessCIDR"} },
+              {"Description":"allow SSH", "IpProtocol": "tcp","FromPort": "22","ToPort": "22", "CidrIp": { "Ref": "RemoteAccessCIDR"} }
+          ]
+        }
+      }, 
+      "ScriptRunnerInstance": {
+        "Type": "AWS::EC2::Instance",
+        "Metadata": {
+        "AWS::CloudFormation::Init": {
+          "configSets": {
+            "All": [
+              "prereqs",
+			  "downloadscript"
+            ]
+          },
+          "prereqs": {
+            "packages": {
+              "yum": {
+                "python3": []
+              }
+            },
+			"commands": {
+        "1_install_boto3": { "command": "sudo pip3 install boto3" }
+      }
+    },
+    "downloadscript":{
+      "commands": {
+        "1_get_enroll_script": {
+          "command":"wget https://vinjak-outbox.s3.us-east-2.amazonaws.com/enroll_account.py -O enroll_account.py",
+					"cwd":"/home/ec2-user",
+					"ignoreErrors":"true"
+				},
+				"2_chmod_enroll_script": { 
+					"command":"chmod +x enroll_account.py",
+					"cwd":"/home/ec2-user",
+					"ignoreErrors":"true"
+        },
+        "3_set_region": {
+          "command": {"Fn::Sub":"echo export AWS_DEFAULT_REGION=${AWS::Region} >> .bash_profile"},
+					"cwd":"/home/ec2-user",
+					"ignoreErrors":"true"          
+        }
+             }
+          }
+        }
+      },
+      "Properties": {
+        "InstanceType": "t3.micro",
+        "ImageId": {
+          "Ref":"LatestAmiId"
+        },
+        "KeyName": {
+          "Ref": "KeyPair"
+        },
+        "Tags" : [
+          {"Key" : "Name", "Value" : {"Fn::Sub":"CT-UpdateRunner-${AWS::StackName}"} }
+        ],
+        "SecurityGroupIds" :[{ "Fn::GetAtt": ["SSHSecurityGroup", "GroupId"] }],
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": [
+              "",
+              [
+                "#!/bin/bash -xe\n",
+				"yum update -y aws-cfn-bootstrap\n",
+                "# Install the files and packages from the metadata\n",
+                "/opt/aws/bin/cfn-init -v ",
+                "         --stack ",
+                {
+                  "Ref": "AWS::StackName"
+                },
+                "         --resource ScriptRunnerInstance ",
+                "         --configsets All ",
+                "         --region ",
+                {
+                  "Ref": "AWS::Region"
+                },
+                "\n",
+                "# Signal the status from cfn-init\n",
+                "/opt/aws/bin/cfn-signal -e $? ",
+                "         --stack ",
+                {
+                  "Ref": "AWS::StackName"
+                },
+                "         --resource ScriptRunnerInstance ",
+                "         --region ",
+                {
+                  "Ref": "AWS::Region"
+                },
+                "\n"
+              ]
+            ]
+          }
+        }
+      },
+      "CreationPolicy": {
+        "ResourceSignal": {
+          "Timeout": "PT5M"
+        }
+      }
+    }
+    },
+    "Outputs": {
+    "SSHAddress": {
+      "Description": "DNS URL of the instance",
+      "Value" : { "Fn::GetAtt" : ["ScriptRunnerInstance", "PublicDnsName"] }
+    }
+  }
+}

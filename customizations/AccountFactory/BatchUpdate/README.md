@@ -22,4 +22,8 @@ optional arguments:
 
 ### Additional Information
 
-<link to the Field Notes Blog>
+https://aws.amazon.com/blogs/field-notes/enabling-guardrails-in-new-aws-regions-the-aws-control-tower-supports/
+
+## License Summary
+
+This sample code is made available under the MIT-0 license. See the LICENSE file.
