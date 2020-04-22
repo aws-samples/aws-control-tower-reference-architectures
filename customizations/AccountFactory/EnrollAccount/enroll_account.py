@@ -84,19 +84,6 @@ def get_provisioning_artifact_id(prod_id):
 
     return output
 
-def get_provisioned_product_id(data):
-    ''' Generate Provisioned product name from the data input '''
-
-    pp_id = ''
-    for item in data:
-        if item['Key'] == 'AccountEmail':
-            email_id = item['Value']
-            (account_id, account_name, account_email) = get_account_mapping(account_email=email_id)
-            (acct_map, error_list, transit_list) = get_provisioned_product_list()
-            pp_id = acct_map[account_id]
-
-    return pp_id
-
 def get_provisioned_product_status(prov_prod_name):
     ''' Query and return the Provisioned Product Current Status '''
 
