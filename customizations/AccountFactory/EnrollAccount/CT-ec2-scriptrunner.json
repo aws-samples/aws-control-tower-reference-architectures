@@ -18,6 +18,7 @@
                     },
                     "Parameters": [
                         "KeyPair",
+                        "LinuxSubnet",
                         "LinuxInstanceType",
                         "LatestAmiId"
                     ]
@@ -33,6 +34,9 @@
                 "RemoteAccessCIDR": {
                     "default": "Remote Access CIDR Block"
                 },
+                "LinuxSubnet": {
+                  "default": "Linux Subnet"
+                },
                 "LatestAmiId": {
                     "default": "SSM key to the latest Amazon linux AMI"
                 }
@@ -44,6 +48,11 @@
             "Type": "AWS::EC2::VPC::Id",
             "Description": "Select the VPC where the EC2 instances will be created",
             "ConstraintDescription": "must be an existing VPC"
+        },
+        "LinuxSubnet": {
+          "Type": "AWS::EC2::Subnet::Id",
+          "Description": "Select subnet for Linux Instance",
+          "ConstraintDescription": "must be an existing subnet"
         },
         "KeyPair": {
             "Description": "Name of existing EC2 key pair for Linux Instances",
@@ -116,6 +125,9 @@
       },
       "Properties": {
         "InstanceType": "t3.micro",
+        "SubnetId": {
+          "Ref": "LinuxSubnet"
+        },
         "ImageId": {
           "Ref":"LatestAmiId"
         },
