@@ -200,7 +200,7 @@ def get_account_mapping(email_id):
     output = None
 
     try:
-        acct_list = ORG.list_accounts()['Accounts']
+        acct_list = list_all_accounts()
     except Exception as e:
         error_and_exit('Failed to get list of accounts' + str(e))
 
@@ -276,6 +276,29 @@ def get_provisioned_product_list():
 
     return(pp_map, error_list, transit_list)
 
+def list_all_accounts():
+    '''Return list of all accounts in the organization'''
+
+    output = list()
+    retry_count = 0
+    throttle_retry = True
+
+    while throttle_retry and retry_count < 5:
+        try:
+            org_paginator = ORG.get_paginator('list_accounts')
+            org_page_iterator = org_paginator.paginate()
+            throttle_retry = False
+        except Exception as exe:
+            error_msg = exe.response['Error']['Code']
+            if error_msg == 'ThrottlingException':
+                retry_count += 1
+            else:
+                error_and_exit('Failed to get list of accounts {}'.format(str(exe)))
+
+    for page in org_page_iterator:
+        output += page['Accounts']
+
+    return output
 
 def get_acct_name(pp_id):
     '''Get account information for a given provisioned product id'''
@@ -293,7 +316,7 @@ def get_acct_name(pp_id):
             break
 
     if acct_id and acct_id not in blacklist:
-        for item in ORG.list_accounts()['Accounts']:
+        for item in list_all_accounts():
             if item['Id'] == acct_id:
                 email_id = item['Email']
                 acct_name = item['Name']
