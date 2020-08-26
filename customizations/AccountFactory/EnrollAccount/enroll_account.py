@@ -2,19 +2,24 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 #
-# Permission is hereby granted, free of charge, to any person obtaining a copy of this
-# software and associated documentation files (the "Software"), to deal in the Software
-# without restriction, including without limitation the rights to use, copy, modify,
-# merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
-# permit persons to whom the Software is furnished to do so.
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the "Software"),
+# to deal in the Software without restriction, including without limitation
+# the rights to use, copy, modify,merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
+# Software is furnished to do so.
 #
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-# PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
-# HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-# OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-# SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+# OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+# IN THE SOFTWARE.
 #
+'''
+Enroll existing accounts in the Organization to AWS Control Tower
+'''
 
 import logging
 from time import sleep
@@ -23,6 +28,21 @@ import sys
 import argparse
 from re import match, sub
 import boto3
+from botocore.exceptions import ClientError
+
+
+CT_REGIONS = ['us-east-1', 'us-east-2', 'us-west-2',
+              'eu-west-1', 'ap-southeast-2']
+ROLE_NAMES = ['AWSControlTowerExecution',
+              'OrganizationAccountAccessRole',
+              'AWSCloudFormationStackSetExecutionRole']
+
+SESSION = boto3.session.Session()
+STS = SESSION.client('sts')
+SC = SESSION.client('servicecatalog')
+ORG = SESSION.client('organizations')
+CFT = SESSION.client('cloudformation')
+REGION_NAME = SESSION.region_name
 
 LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.INFO)
@@ -30,16 +50,24 @@ HANDLER = logging.StreamHandler(sys.stdout)
 HANDLER.setLevel(logging.DEBUG)
 LOGGER.addHandler(HANDLER)
 
+RESET_STYLE = '\033[0m'
+ERR_STYLE = '\033[37;5;41m'
+INFO_STYLE = '\033[30;42m'
+HIGHLIGHT = '\033[37;1;41m'
+
+
 def error_and_exit(error_msg='ERROR'):
     '''Throw error and exit'''
 
     LOGGER.error(error_msg)
     sys.exit(1)
 
+
 def error_and_continue(error_msg='ERROR'):
     '''Throw error and contiune'''
 
     LOGGER.error(error_msg)
+
 
 def get_product_id():
     ''' Find the Product Id of AWS Control Tower Account Factory '''
@@ -67,6 +95,7 @@ def get_product_id():
 
     return output
 
+
 def get_provisioning_artifact_id(prod_id):
     ''' Query for Provisioned Artifact Id '''
 
@@ -75,14 +104,17 @@ def get_provisioning_artifact_id(prod_id):
     try:
         pa_list = SC.describe_product_as_admin(Id=prod_id)['ProvisioningArtifactSummaries']
     except Exception as exe:
-        error_and_exit("Unable to find the Provisioned Artifact Id: " + str(exe))
+        error_and_exit("Unable to find the Provisioned Artifact Id: " +
+                       str(exe))
 
     if len(pa_list) > 0:
         output = pa_list[-1]['Id']
     else:
-        error_and_exit("Unable to find the Provisioned Artifact Id: " + str(pa_list))
+        error_and_exit("Unable to find the Provisioned Artifact Id: " +
+                       str(pa_list))
 
     return output
+
 
 def get_provisioned_product_id(data):
     ''' Generate Provisioned product name from the data input '''
@@ -97,6 +129,7 @@ def get_provisioned_product_id(data):
 
     return pp_id
 
+
 def get_provisioned_product_status(prov_prod_name):
     ''' Query and return the Provisioned Product Current Status '''
 
@@ -109,9 +142,11 @@ def get_provisioned_product_status(prov_prod_name):
             break
 
     if not output:
-        error_and_exit('Unable to find any provisioned products: ' + str(prov_prod_name))
+        error_and_exit('Unable to find any provisioned products: ' +
+                       str(prov_prod_name))
 
     return output
+
 
 def provision_sc_product(prod_id, pa_id, prov_prod_name, input_params):
     ''' Provision the Service Catalog Product '''
@@ -119,20 +154,22 @@ def provision_sc_product(prod_id, pa_id, prov_prod_name, input_params):
     result = None
     print('Launching {}'.format(prov_prod_name))
     try:
-        result = SC.provision_product(ProductId=prod_id, ProvisioningArtifactId=pa_id, \
-                        ProvisionedProductName=prov_prod_name, \
-                        ProvisioningParameters=input_params, \
-                        ProvisionToken=str(randint(1000000000000, 9999999999999)))
+        result = SC.provision_product(ProductId=prod_id,
+                                      ProvisioningArtifactId=pa_id,
+                                      ProvisionedProductName=prov_prod_name,
+                                      ProvisioningParameters=input_params,
+                                      ProvisionToken=str(randint(1000000000000, 9999999999999)))
     except Exception as exe:
         LOGGER.error('SC product provisioning failed: %s', str(exe))
 
     return result
 
+
 def search_provisioned_product_full_list():
     '''Get complete list of provisioned products'''
 
     pp_list = list()
-    filters = {"Key" : "Account", "Value" : "self"}
+    filters = {"Key": "Account", "Value": "self"}
 
     try:
         pp_dict = SC.search_provisioned_products(AccessLevelFilter=filters)
@@ -143,13 +180,15 @@ def search_provisioned_product_full_list():
     while 'NextPageToken' in pp_dict:
         next_token = pp_dict['NextPageToken']
         try:
-            pp_dict = SC.search_provisioned_products(AccessLevelFilter=filters, \
+            pp_dict = SC.search_provisioned_products(AccessLevelFilter=filters,
                                                      PageToken=next_token)
             pp_list += pp_dict['ProvisionedProducts']
         except Exception as exe:
-            error_and_exit('Failed to get complete provisioned products list: ' + str(exe))
+            error_and_exit('Failed to get provisioned products full list: ' +
+                           str(exe))
 
     return pp_list
+
 
 def search_provisioned_products():
     '''List the provisioned products that matches the filter'''
@@ -171,6 +210,7 @@ def search_provisioned_products():
 
     return(ct_pp_list, error_list, transit_list)
 
+
 def get_provisioned_product_list():
     '''Get list of provisioned products by Account Factory '''
 
@@ -191,6 +231,7 @@ def get_provisioned_product_list():
 
     return(pp_map, error_list, transit_list)
 
+
 def generate_provisioned_product_name(data):
     ''' Generate Provisioned product name from data '''
 
@@ -203,19 +244,6 @@ def generate_provisioned_product_name(data):
 
     return result
 
-def does_ct_role_exists(account_id):
-    '''Return None if role_name doesn't exists in account_id'''
-
-    role_arn = 'arn:aws:iam::' + account_id + ':role/AWSControlTowerExecution'
-    session_name = 'session_' + account_id
-
-    try:
-        STS.assume_role(RoleArn=role_arn, RoleSessionName=session_name)
-        result = True
-    except Exception:
-        result = False
-
-    return result
 
 def does_stack_set_exists(ss_name):
     '''Return True if active StackSet exists'''
@@ -237,6 +265,7 @@ def does_stack_set_exists(ss_name):
 
     return result
 
+
 def add_stack_instance(ss_name, region_name, ou_id):
     '''Add stack instance to the existing StackSet'''
 
@@ -247,8 +276,10 @@ def add_stack_instance(ss_name, region_name, ou_id):
 
     if output:
         try:
-            result = CFT.create_stack_instances(StackSetName=ss_name, Regions=[region_name], \
-                                    DeploymentTargets=targets, OperationPreferences=op_prefer)
+            result = CFT.create_stack_instances(StackSetName=ss_name,
+                                                Regions=[region_name],
+                                                DeploymentTargets=targets,
+                                                OperationPreferences=op_prefer)
         except Exception as exe:
             raise exe
     else:
@@ -256,11 +287,13 @@ def add_stack_instance(ss_name, region_name, ou_id):
 
     return result['OperationId']
 
+
 def check_ss_status(ss_name, op_id):
     '''Return true on successful deployment of stack instance'''
 
     try:
-        result = CFT.describe_stack_set_operation(StackSetName=ss_name, OperationId=op_id)
+        result = CFT.describe_stack_set_operation(StackSetName=ss_name,
+                                                  OperationId=op_id)
     except Exception as exe:
         LOGGER.error('Something went wrong: %s', str(exe))
         result = None
@@ -270,29 +303,71 @@ def check_ss_status(ss_name, op_id):
 
     return result
 
-def create_crossaccount_role(account_id, region_name, master_account_id):
-    '''Create cross account roles in the migrated ou using service managed auto deployment'''
+
+def list_from_stack_instances(ss_name, key='Account'):
+    '''List of accounts that are part of stack instances'''
+
+    result = list()
+    ss_list = list()
+
+    try:
+        cft_paginator = CFT.get_paginator('list_stack_instances')
+        cft_page_iterator = cft_paginator.paginate(StackSetName=ss_name)
+    except Exception as exe:
+        LOGGER.error('Unable to list stack instances: %s', str(exe))
+
+    for page in cft_page_iterator:
+        ss_list += page['Summaries']
+
+    for item in ss_list:
+        result.append(item[key])
+
+    result = list(dict.fromkeys(result))
+
+    return result
+
+
+def does_ct_role_exists(account_id):
+    '''Return None if role_name doesn't exists in account_id'''
+
+    role_arn = 'arn:aws:iam::' + account_id + ':role/AWSControlTowerExecution'
+    session_name = 'session_' + account_id
+
+    try:
+        STS.assume_role(RoleArn=role_arn, RoleSessionName=session_name)
+        result = True
+    except Exception:
+        result = False
+
+    return result
+
+
+def create_crossaccount_role(account_id, region, master_id):
+    '''
+    Create cross account roles in the migrated ou using
+    service managed auto deployment option of StackSets
+    '''
 
     ou_id = get_parent_for_account(account_id)
     ss_url = 'https://marketplace-sa-resources.s3.amazonaws.com/ct-blogs-content/AWSControlTowerExecution.yml'
-    ss_deploy = {'Enabled':True, 'RetainStacksOnAccountRemoval':True}
+    ss_deploy = {'Enabled': True, 'RetainStacksOnAccountRemoval': True}
     ss_name = 'MyCrossAccountRole-StackSet'
-    ss_desc = 'Cross account role creation for stacksets'
-    ss_param = [{'ParameterKey':'AdministratorAccountId', 'ParameterValue':master_account_id}]
-    ss_perm = 'SERVICE_MANAGED'
+    ss_param = [{'ParameterKey': 'AdministratorAccountId', 'ParameterValue': master_id}]
     capabilites = ['CAPABILITY_NAMED_IAM']
     result = False
     op_id = None
     ss_status = 'RUNNING'
 
     try:
-        result = CFT.create_stack_set(StackSetName=ss_name, Description=ss_desc, \
-                                      TemplateURL=ss_url, Capabilities=capabilites, \
-                                      Parameters=ss_param, PermissionModel=ss_perm, \
+        result = CFT.create_stack_set(StackSetName=ss_name,
+                                      Description='Cross account role creation for stacksets',
+                                      TemplateURL=ss_url,
+                                      Capabilities=capabilites,
+                                      Parameters=ss_param,
+                                      PermissionModel='SERVICE_MANAGED',
                                       AutoDeployment=ss_deploy)
     except Exception as exe:
-        LOGGER.info(str(exe))
-        error_msg = exe.response['Error']['Message']
+        error_msg = str(exe.response['Error']['Message'])
         if 'StackSet already exists' in error_msg:
             LOGGER.info('StackSet already exists, Adding stack instance')
             result = True
@@ -300,17 +375,72 @@ def create_crossaccount_role(account_id, region_name, master_account_id):
             raise exe
 
     if result:
-        op_id = add_stack_instance(ss_name, region_name, ou_id)
+        op_id = add_stack_instance(ss_name, region, ou_id)
 
-    #Wait for cross-account role creation completion
+    # Wait for cross-account role creation completion
     while ss_status in ('RUNNING', 'QUEUED', 'STOPPING'):
-        print('Creating cross-account role on {}, wait 30 sec: {}'.format(account_id, ss_status))
+        LOGGER.info('Creating cross-account role on %s, wait 30 sec: %s',
+                    account_id, ss_status)
         ss_status = check_ss_status(ss_name, op_id)
         sleep(30)
 
     result = bool(ss_status in ('SUCCEEDED', 'FAILED'))
 
     return result
+
+
+def try_assume_role(account_number, role_name, external_id):
+    '''Return STS keys on success and Error on failure'''
+
+    partition = STS.get_caller_identity()['Arn'].split(":")[1]
+    role_arn = 'arn:{}:iam::{}:role/{}'.format(partition,
+                                               account_number,
+                                               role_name)
+    result = dict()
+
+    try:
+        result = STS.assume_role(
+            RoleArn=role_arn,
+            RoleSessionName=str(account_number + '-' + role_name),
+            ExternalId=external_id)
+    except ClientError as exe:
+        if str(exe.response['Error']['Code']) == 'AccessDenied':
+            result = exe.response
+        else:
+            result['Error']['Reason'] = str(exe)
+
+    return result
+
+
+def assume_role(account_number, external_id):
+    '''
+    Assumes the provided role in each account and returns a session object
+    :param account_number: AWS Account Number
+    :param aws_region: AWS Region for the Client call
+    :return: Session object for the specified AWS Account and Region
+    '''
+
+    response = {'Error': {'Code': 'Unknown'}}
+    counter = 0
+
+    while 'Error' in response and counter < len(ROLE_NAMES):
+        if 'Code' in response['Error']:
+            role_name = ROLE_NAMES[counter]
+            response = try_assume_role(account_number, role_name, external_id)
+            counter += 1
+        else:
+            LOGGER.error('Could not assume role: %s', response['Error'])
+            response = dict()
+            counter += 3
+
+    if bool(response):
+        sts_session = boto3.Session(
+            aws_access_key_id=response['Credentials']['AccessKeyId'],
+            aws_secret_access_key=response['Credentials']['SecretAccessKey'],
+            aws_session_token=response['Credentials']['SessionToken']
+        )
+        return sts_session
+
 
 def list_org_roots():
     '''List organization roots'''
@@ -319,7 +449,8 @@ def list_org_roots():
     try:
         root_info = ORG.list_roots()
     except Exception as exe:
-        error_and_exit('Script should run on Organization root only: ' + str(exe))
+        error_and_exit('Script should run on Organization root only: ' +
+                       str(exe))
 
     if 'Roots' in root_info:
         value = root_info['Roots'][0]['Id']
@@ -328,13 +459,15 @@ def list_org_roots():
 
     return value
 
+
 def list_all_ou():
     '''List all OUs in an organization'''
 
     org_info = list()
     root_id = list_org_roots()
     try:
-        child_dict = ORG.list_children(ParentId=root_id, ChildType='ORGANIZATIONAL_UNIT')
+        child_dict = ORG.list_children(ParentId=root_id,
+                                       ChildType='ORGANIZATIONAL_UNIT')
         child_list = child_dict['Children']
     except Exception as exe:
         error_and_exit('Unable to get children list' + str(exe))
@@ -342,8 +475,9 @@ def list_all_ou():
     while 'NextToken' in child_dict:
         next_token = child_dict['NextToken']
         try:
-            child_dict = ORG.list_children(ParentId=root_id, \
-                        ChildType='ORGANIZATIONAL_UNIT', NextToken=next_token)
+            child_dict = ORG.list_children(ParentId=root_id,
+                                           ChildType='ORGANIZATIONAL_UNIT',
+                                           NextToken=next_token)
             child_list += child_dict['Children']
         except Exception as exe:
             error_and_exit('Unable to get complete children list' + str(exe))
@@ -355,6 +489,7 @@ def list_all_ou():
         error_and_exit('No Organizational Units Found')
 
     return org_info
+
 
 def get_ou_map():
     '''Generate ou-id to ou-name mapping'''
@@ -371,6 +506,7 @@ def get_ou_map():
             error_and_exit('Unable to get the OU information' + str(exe))
 
     return ou_map
+
 
 def get_ou_details(ou_name=None, ou_id=None):
     '''Return OU id to OU name and vice versa'''
@@ -395,6 +531,7 @@ def get_ou_details(ou_name=None, ou_id=None):
 
     return output
 
+
 def list_all_accounts():
     '''Return list of all accounts in the organization'''
 
@@ -408,16 +545,17 @@ def list_all_accounts():
             org_page_iterator = org_paginator.paginate()
             throttle_retry = False
         except Exception as exe:
-            error_msg = exe.response['Error']['Code']
+            error_msg = str(exe.response['Error']['Code'])
             if error_msg == 'ThrottlingException':
                 retry_count += 1
             else:
-                error_and_exit('Failed to get list of accounts {}'.format(str(exe)))
+                error_and_exit('Failed to list accounts {}'.format(str(exe)))
 
     for page in org_page_iterator:
         output += page['Accounts']
 
     return output
+
 
 def get_account_mapping(account_email=None, account_id=None):
     '''Return account id for a given email and vice versa'''
@@ -443,6 +581,7 @@ def get_account_mapping(account_email=None, account_id=None):
 
     return(account_id, account_name, account_email)
 
+
 def get_parent_for_account(account_id):
     '''Return the OU id of an account'''
 
@@ -467,6 +606,7 @@ def get_parent_for_account(account_id):
 
     return result
 
+
 def list_of_accounts_in_ou(ou_id):
     '''Return list of accounts, and email-Ids'''
 
@@ -488,6 +628,7 @@ def list_of_accounts_in_ou(ou_id):
 
     return account_map
 
+
 def get_ou_id(ou_info):
     '''Return ou_id'''
 
@@ -501,13 +642,23 @@ def get_ou_id(ou_info):
 
     return ou_id
 
+
+def get_org_id():
+    '''Get organization id'''
+
+    try:
+        value = ORG.describe_organization()['Organization']['Id']
+        return value
+    except Exception as exe:
+        error_and_exit('Unable to get organization id: ' + str(exe))
+
+
 def get_accounts_in_ou(unmanaged_ou, managed_ou):
     '''List of accounts in an organizational unit'''
 
     result = dict()
 
     ou_id = get_ou_id(unmanaged_ou)
-    managed_ou_id = get_ou_id(managed_ou)
 
     account_map = list_of_accounts_in_ou(ou_id)
 
@@ -518,19 +669,6 @@ def get_accounts_in_ou(unmanaged_ou, managed_ou):
 
     return result
 
-def generate_data(account_email, account_name, ou_name):
-    '''Generate the formatted object'''
-
-    result = [
-        {'Key': 'SSOUserEmail', 'Value': account_email},
-        {'Key': 'SSOUserFirstName', 'Value': 'Admin'},
-        {'Key': 'SSOUserLastName', 'Value': 'User'},
-        {'Key': 'AccountName', 'Value': account_name},
-        {'Key': 'AccountEmail', 'Value': account_email},
-        {'Key': 'ManagedOrganizationalUnit', 'Value': ou_name}
-        ]
-
-    return result
 
 def get_account_info(managed_ou, account_email=None, account_id=None):
     '''Generate data file from account_email and account_id'''
@@ -548,25 +686,243 @@ def get_account_info(managed_ou, account_email=None, account_id=None):
 
     return result
 
+
+def list_configuration_recorders(client):
+    '''List all the configuration recorders'''
+
+    result = list()
+
+    try:
+        out = client.describe_configuration_recorders()
+        recorders = out['ConfigurationRecorders']
+        for recorder in recorders:
+            result.append(recorder['name'])
+    except Exception as exe:
+        LOGGER.error('Unable to list Config Recorders: %s', str(exe))
+
+    return result
+
+
+def list_delivery_channels(client):
+    '''List all delivery channels'''
+
+    result = list()
+
+    try:
+        out = client.describe_delivery_channels()
+        channels = out['DeliveryChannels']
+        for channel in channels:
+            result.append(channel['name'])
+    except Exception as exe:
+        LOGGER.error('Unable to list Delivery Channels: %s', str(exe))
+
+    return result
+
+
+def list_config_in_ct_regions(session):
+    '''
+    List all Config recorder and delivery channels in
+    all regions AWS Control Tower is supported in.
+    Five regions as of August 2020
+    '''
+
+    result = dict()
+
+    for region in CT_REGIONS:
+
+        client = session.client('config', region_name=region)
+
+        config_recorders = list_configuration_recorders(client)
+        delivery_channels = list_delivery_channels(client)
+
+        result[region] = dict()
+        result[region]['ConfigurationRecorders'] = config_recorders
+        result[region]['DeliveryChannels'] = delivery_channels
+
+    return result
+
+
+def generate_data(account_email, account_name, ou_name):
+    '''Generate the formatted object'''
+
+    result = [
+        {'Key': 'SSOUserEmail', 'Value': account_email},
+        {'Key': 'SSOUserFirstName', 'Value': 'Admin'},
+        {'Key': 'SSOUserLastName', 'Value': 'User'},
+        {'Key': 'AccountName', 'Value': account_name},
+        {'Key': 'AccountEmail', 'Value': account_email},
+        {'Key': 'ManagedOrganizationalUnit', 'Value': ou_name}
+        ]
+
+    return result
+
+
+def start_enrolling_accounts(data, region, master_id):
+    '''Enroll accounts from the dataset sequentially'''
+
+    # Get list of Service Catalog provisioned products in
+    # AVAILABLE / ERROR state
+    (acct_map, error_list, transit_list) = get_provisioned_product_list()
+
+    # Get the Product Id of the AWS Control Tower Account Factory
+    prod_id = get_product_id()
+
+    # Get the Provisioning Artifact Id of the AWS Control Tower Account Factory
+    pa_id = get_provisioning_artifact_id(prod_id)
+
+    if len(transit_list) > 0:
+        error_and_exit('Update in progress. Allow UNDER_CHANGE or ' +
+                       'PLAN_IN_PROGRESS provisioned products ' +
+                       'to complete:' + str(transit_list))
+    else:
+        for account_id in data:
+            pp_status = 'UNDER_CHANGE'
+            sleep_time = 360
+
+            # Check if the AWS Control Tower role exists.
+            role_exists = does_ct_role_exists(account_id)
+            retry = 0
+
+            while not role_exists:
+                create_crossaccount_role(account_id, region, master_id)
+                role_exists = does_ct_role_exists(account_id)
+                retry += 1
+                if retry == 5:
+                    error_and_exit('Failed to create ' +
+                                   'AWSControlTowerExecution role -' + retry)
+
+            if role_exists:
+
+                pp_name = generate_provisioned_product_name(data[account_id])
+
+                p_status = provision_sc_product(prod_id,
+                                                pa_id, pp_name,
+                                                data[account_id])
+
+                if not p_status:
+                    pp_status = 'ERROR'
+
+                # Wait until the Service Catalog Product Provisioning Completes
+                while pp_status == 'UNDER_CHANGE':
+                    LOGGER.info('Status: %s. Waiting for %s min to recheck',
+                                pp_status, sleep_time/60)
+                    sleep(sleep_time)
+                    if sleep_time > 60:
+                        sleep_time -= 60
+
+                    pp_status = get_provisioned_product_status(pp_name)
+
+                if pp_status == 'AVAILABLE':
+                    LOGGER.info('SUCCESS: %s updated', account_id)
+                else:
+                    LOGGER.error('%s: %s', pp_status, account_id)
+            else:
+                LOGGER.error('Unable to create role for %s', account_id)
+
+
+def initialize_precheck(account_id):
+    '''
+    Return a precheck dict
+    '''
+
+    result = {
+        account_id: {
+            'ConfigData': {},
+            'ErrDetails': [],
+            'ErrCount': 0
+        }
+    }
+
+    return result
+
+
+def run_prechecks(data):
+    ''' Run the prechecks and return the result'''
+
+    precheck_result = dict()
+    final_result = list()
+    accounts = list()
+    role_miss = ['AWSControlTowerExecution Role does not exist.',
+                 ' This script will create the role']
+    role_miss = "".join(role_miss)
+    cr_msg = "Config Recorder exist. Need to be DELETED."
+    dc_msg = "Delivery Channel exist. Need to be DELETED."
+    non_ct_msg = 'Account provided is a Managed Account. NOT POSSIBLE TO ENROLL.'
+
+    root_acc = STS.get_caller_identity()['Account']
+    ct_accounts = list_from_stack_instances('AWSControlTowerBP-BASELINE-SERVICE-ROLES')
+
+    for account in list_all_accounts():
+        accounts.append(account['Id'])
+
+    accounts.remove(root_acc)
+
+    for account_id in data:
+        if account_id in accounts:
+            precheck_result = initialize_precheck(account_id)
+            precheck_account_id = precheck_result[account_id]
+            # Check for existence on AWSControlTowerExecution Role
+            role_exists = does_ct_role_exists(account_id)
+            if not role_exists:
+                precheck_account_id['ErrDetails'].append(account_id + ": " + role_miss)
+
+            # Check if the account is AWS Control Tower account
+            if account_id in ct_accounts:
+                precheck_account_id['ErrDetails'].append(account_id + ": " + non_ct_msg)
+                precheck_account_id['ErrCount'] = precheck_account_id['ErrCount'] + 1
+
+            else:
+                # Check for existence of any Config Recorder/Delivery Channel
+                target_session = assume_role(account_id, get_org_id())
+                output = list_config_in_ct_regions(target_session)
+
+                for key in output:
+                    header = account_id + ': ' + key
+                    if len(output[key]['ConfigurationRecorders']) >= 1:
+                        precheck_account_id['ErrCount'] = precheck_account_id['ErrCount'] + 1
+                        precheck_account_id['ErrDetails'].append(header +
+                                                                 ': ' + cr_msg)
+                    if len(output[key]['DeliveryChannels']) >= 1:
+                        precheck_account_id['ErrCount'] = precheck_account_id['ErrCount'] + 1
+                        precheck_account_id['ErrDetails'].append(header +
+                                                                 ': ' + dc_msg)
+
+            final_result.append(precheck_result)
+        else:
+            LOGGER.warning('Account Id %s not found in %s',
+                           account_id, accounts)
+
+    return final_result
+
+
+def process_verify_result(result):
+    '''Check for error count and return the result'''
+
+    for account in result:
+        print()
+        for value in account.values():
+            err_details = value['ErrDetails']
+            if len(err_details) >= 1:
+                for err in err_details:
+                    err = err.split(sep=':')
+                    print(HIGHLIGHT + err[0] + RESET_STYLE, ":".join(err[1:]))
+
+
 if __name__ == '__main__':
-    PARSER = argparse.ArgumentParser(prog='enroll_account.py', usage='%(prog)s -o -u|-e|-i [-c]', \
-                                    description='Enroll existing accounts to AWS Control Tower.')
+    PARSER = argparse.ArgumentParser(prog='enroll_account.py',
+                                     usage='%(prog)s -o -u|-e|-i [-c|-V]',
+                                     description='Enroll existing accounts to AWS Control Tower.')
 
     PARSER.add_argument("-o", "--ou", type=str, required=True, help="Target Registered OU")
     PARSER.add_argument("-u", "--unou", type=str, help="Origin UnRegistered OU")
-    PARSER.add_argument("-e", "--email", type=str, \
+    PARSER.add_argument("-e", "--email", type=str,
                         help="AWS account email-address to enroll in to AWS Control Tower")
-    PARSER.add_argument("-i", "--aid", type=str, \
+    PARSER.add_argument("-i", "--aid", type=str,
                         help="AWS Account Id to enroll in to AWS Control Tower")
-    PARSER.add_argument("-c", "--create_role", action='store_true', \
+    PARSER.add_argument("-c", "--create_role", action='store_true',
                         help="Create Roles on Root Level")
-
-    SESSION = boto3.session.Session()
-    STS = SESSION.client('sts')
-    SC = SESSION.client('servicecatalog')
-    ORG = SESSION.client('organizations')
-    CFT = SESSION.client('cloudformation')
-    REGION_NAME = SESSION.region_name
+    PARSER.add_argument("-V", "--verify_only", action='store_true',
+                        help="Pre-checks only. No account enrollment initiated")
 
     ARGS = PARSER.parse_args()
     MANAGED_OU = ARGS.ou
@@ -582,65 +938,32 @@ if __name__ == '__main__':
     else:
         error_and_exit('Need to pass atleast one option from [-u|-e|-i]')
 
-
     MASTER_ACCOUNT_ID = STS.get_caller_identity()['Account']
 
-    EMAIL_ID = STS.get_caller_identity()['UserId'].split(':')[-1]
+    EMAIL_ID = STS.get_caller_identity()['Arn'].split(':')[-1]
 
-    LOGGER.info('Executing on AWS Account: %s, %s', MASTER_ACCOUNT_ID, EMAIL_ID)
+    LOGGER.info('\nExecuting on AWS Account: %s, %s',
+                INFO_STYLE + MASTER_ACCOUNT_ID + RESET_STYLE,
+                INFO_STYLE + EMAIL_ID + RESET_STYLE)
 
-    # Get list of Service Catalog provisioned products in AVAILABLE / ERROR state
-    (ACCT_MAP, ERROR_LIST, TRANSIT_LIST) = get_provisioned_product_list()
-
-    # Get the Product Id of the AWS Control Tower Account Factory
-    PROD_ID = get_product_id()
-
-    # Get the Provisioning Artifact Id of the AWS Control Tower Account Factory
-    PA_ID = get_provisioning_artifact_id(PROD_ID)
-
-    # for all items in the dataset migrate accounts sequentially
-    if len(TRANSIT_LIST) > 0:
-        MSG = 'Update in progress. Allow UNDER_CHANGE or PLAN_IN_PROGRESS stacks to complete: '
-        error_and_exit(MSG + str(TRANSIT_LIST))
+    if ARGS.verify_only:
+        VERIFY_RESULT = run_prechecks(DATA)
+        process_verify_result(VERIFY_RESULT)
     else:
-        for ACCOUNT_ID in DATA:
-            account_data = DATA[ACCOUNT_ID]
-            pp_status = 'UNDER_CHANGE'
-            sleep_time = 360
+        VERIFY_RESULT = run_prechecks(DATA)
+        COUNT = 0
+        for account_info in VERIFY_RESULT:
+            for acct_value in account_info.values():
+                if acct_value['ErrCount'] >= 1:
+                    COUNT += acct_value['ErrCount']
 
-            # Check if the AWS Control Tower role exists.
-            role_exists = does_ct_role_exists(ACCOUNT_ID)
-            retry = 0
-
-            while not role_exists:
-                create_crossaccount_role(ACCOUNT_ID, REGION_NAME, MASTER_ACCOUNT_ID)
-                role_exists = does_ct_role_exists(ACCOUNT_ID)
-                retry += 1
-                if retry == 5:
-                    error_and_exit('Failed to create ControlTowerExecution role - {}'.format(retry))
-
-            if role_exists:
-
-                PP_NAME = generate_provisioned_product_name(account_data)
-
-                p_status = provision_sc_product(PROD_ID, PA_ID, PP_NAME, account_data)
-
-                if not p_status:
-                    pp_status = 'ERROR'
-
-                # Wait until the Service Catalog Product Provisioning Completes
-                while pp_status == 'UNDER_CHANGE':
-                    print('Status: {}. Waiting for {} min to check back the Status'.\
-                            format(pp_status, sleep_time/60))
-                    sleep(sleep_time)
-                    if sleep_time > 60:
-                        sleep_time -= 60
-
-                    pp_status = get_provisioned_product_status(PP_NAME)
-
-                if pp_status == 'AVAILABLE':
-                    LOGGER.info('SUCCESS: %s updated', ACCOUNT_ID)
-                else:
-                    LOGGER.error('%s: %s', pp_status, ACCOUNT_ID)
-            else:
-                LOGGER.error('Unable to create role for %s', ACCOUNT_ID)
+        if COUNT == 0:
+            LOGGER.info(INFO_STYLE + 'PRECHECK SUCCEEDED. Proceeding' +
+                        RESET_STYLE)
+            start_enrolling_accounts(DATA, REGION_NAME, MASTER_ACCOUNT_ID)
+        else:
+            LOGGER.info('%'*62)
+            LOGGER.error(ERR_STYLE + '!!! PRECHECK FAILED !!!' + RESET_STYLE +
+                         ': Fix below errors and rerun the script')
+            LOGGER.info('%'*62)
+            process_verify_result(VERIFY_RESULT)
