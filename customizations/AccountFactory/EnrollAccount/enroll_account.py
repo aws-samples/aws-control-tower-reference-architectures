@@ -412,7 +412,26 @@ def try_assume_role(account_number, role_name, external_id):
     return result
 
 
-def assume_role(account_number, external_id):
+def check_and_create_role(account_id):
+    '''
+    Check if cross-account-role exist and create if needed
+    '''
+
+    result = does_ct_role_exists(account_id)
+    retry = 0
+
+    while not result:
+        create_crossaccount_role(account_id, REGION_NAME, MASTER_ACCOUNT_ID)
+        result = does_ct_role_exists(account_id)
+        retry += 1
+        if retry == 5:
+            error_and_exit('Failed to create ' +
+                           'AWSControlTowerExecution role -' + retry)
+
+    return result
+
+
+def get_sts_session(account_number, external_id):
     '''
     Assumes the provided role in each account and returns a session object
     :param account_number: AWS Account Number
@@ -433,7 +452,7 @@ def assume_role(account_number, external_id):
             response = dict()
             counter += 3
 
-    if bool(response):
+    if 'Credentials' in response:
         sts_session = boto3.Session(
             aws_access_key_id=response['Credentials']['AccessKeyId'],
             aws_secret_access_key=response['Credentials']['SecretAccessKey'],
@@ -757,7 +776,7 @@ def generate_data(account_email, account_name, ou_name):
     return result
 
 
-def start_enrolling_accounts(data, region, master_id):
+def start_enrolling_accounts(data):
     '''Enroll accounts from the dataset sequentially'''
 
     # Get list of Service Catalog provisioned products in
@@ -779,24 +798,12 @@ def start_enrolling_accounts(data, region, master_id):
             pp_status = 'UNDER_CHANGE'
             sleep_time = 360
 
-            # Check if the AWS Control Tower role exists.
-            role_exists = does_ct_role_exists(account_id)
-            retry = 0
-
-            while not role_exists:
-                create_crossaccount_role(account_id, region, master_id)
-                role_exists = does_ct_role_exists(account_id)
-                retry += 1
-                if retry == 5:
-                    error_and_exit('Failed to create ' +
-                                   'AWSControlTowerExecution role -' + retry)
+            role_exists = check_and_create_role(account_id)
 
             if role_exists:
 
                 pp_name = generate_provisioned_product_name(data[account_id])
-
-                p_status = provision_sc_product(prod_id,
-                                                pa_id, pp_name,
+                p_status = provision_sc_product(prod_id, pa_id, pp_name,
                                                 data[account_id])
 
                 if not p_status:
@@ -827,9 +834,8 @@ def initialize_precheck(account_id):
 
     result = {
         account_id: {
-            'ConfigData': {},
-            'ErrDetails': [],
-            'ErrCount': 0
+            'ConfigData': {}, 'ErrDetails': [],
+            'ErrCount': 0, 'ErrException': 0
         }
     }
 
@@ -848,6 +854,9 @@ def run_prechecks(data):
     cr_msg = "Config Recorder exist. Need to be DELETED."
     dc_msg = "Delivery Channel exist. Need to be DELETED."
     non_ct_msg = 'Account provided is a Managed Account. NOT POSSIBLE TO ENROLL.'
+    no_x_role = ['No organization level trusted role exist. Precheck INCOMPLETE.',
+                 ' Run this script without -V option to create the role and proceed.']
+    no_x_role = "".join(no_x_role)
 
     root_acc = STS.get_caller_identity()['Account']
     ct_accounts = list_from_stack_instances('AWSControlTowerBP-BASELINE-SERVICE-ROLES')
@@ -873,20 +882,23 @@ def run_prechecks(data):
 
             else:
                 # Check for existence of any Config Recorder/Delivery Channel
-                target_session = assume_role(account_id, get_org_id())
-                output = list_config_in_ct_regions(target_session)
+                target_session = get_sts_session(account_id, get_org_id())
 
-                for key in output:
-                    header = account_id + ': ' + key
-                    if len(output[key]['ConfigurationRecorders']) >= 1:
-                        precheck_account_id['ErrCount'] = precheck_account_id['ErrCount'] + 1
-                        precheck_account_id['ErrDetails'].append(header +
-                                                                 ': ' + cr_msg)
-                    if len(output[key]['DeliveryChannels']) >= 1:
-                        precheck_account_id['ErrCount'] = precheck_account_id['ErrCount'] + 1
-                        precheck_account_id['ErrDetails'].append(header +
-                                                                 ': ' + dc_msg)
+                if target_session:
+                    output = list_config_in_ct_regions(target_session)
 
+                    for key in output:
+                        header = account_id + ': ' + key
+                        if len(output[key]['ConfigurationRecorders']) >= 1:
+                            precheck_account_id['ErrCount'] = precheck_account_id['ErrCount'] + 1
+                            precheck_account_id['ErrDetails'].append(header + ': ' + cr_msg)
+                        if len(output[key]['DeliveryChannels']) >= 1:
+                            precheck_account_id['ErrCount'] = precheck_account_id['ErrCount'] + 1
+                            precheck_account_id['ErrDetails'].append(header + ': ' + dc_msg)
+                else:
+                    precheck_account_id['ErrCount'] = precheck_account_id['ErrCount'] + 1
+                    precheck_account_id['ErrDetails'].append(account_id + ': ' + no_x_role)
+                    precheck_account_id['ErrException'] = 1
             final_result.append(precheck_result)
         else:
             LOGGER.warning('Account Id %s not found in %s',
@@ -908,11 +920,21 @@ def process_verify_result(result):
                     print(HIGHLIGHT + err[0] + RESET_STYLE, ":".join(err[1:]))
 
 
+def check_for_role_exception():
+    '''Create cross account role if ErrException found in the prechecks'''
+
+    verify_result = run_prechecks(DATA)
+    for item in verify_result:
+        for account in item:
+            acct_detail = item[account]
+            if acct_detail['ErrException'] == 1:
+                check_and_create_role(account)
+
+
 if __name__ == '__main__':
     PARSER = argparse.ArgumentParser(prog='enroll_account.py',
                                      usage='%(prog)s -o -u|-e|-i [-c|-V]',
                                      description='Enroll existing accounts to AWS Control Tower.')
-
     PARSER.add_argument("-o", "--ou", type=str, required=True, help="Target Registered OU")
     PARSER.add_argument("-u", "--unou", type=str, help="Origin UnRegistered OU")
     PARSER.add_argument("-e", "--email", type=str,
@@ -950,6 +972,7 @@ if __name__ == '__main__':
         VERIFY_RESULT = run_prechecks(DATA)
         process_verify_result(VERIFY_RESULT)
     else:
+        check_for_role_exception()
         VERIFY_RESULT = run_prechecks(DATA)
         COUNT = 0
         for account_info in VERIFY_RESULT:
@@ -960,7 +983,7 @@ if __name__ == '__main__':
         if COUNT == 0:
             LOGGER.info(INFO_STYLE + 'PRECHECK SUCCEEDED. Proceeding' +
                         RESET_STYLE)
-            start_enrolling_accounts(DATA, REGION_NAME, MASTER_ACCOUNT_ID)
+            start_enrolling_accounts(DATA)
         else:
             LOGGER.info('%'*62)
             LOGGER.error(ERR_STYLE + '!!! PRECHECK FAILED !!!' + RESET_STYLE +
