@@ -105,7 +105,7 @@
     "downloadscript":{
       "commands": {
         "1_get_enroll_script": {
-          "command":"wget https://vinjak-outbox.s3.us-east-2.amazonaws.com/enroll_account.py -O enroll_account.py",
+          "command":"wget https://raw.githubusercontent.com/aws-samples/aws-control-tower-reference-architectures/master/customizations/AccountFactory/EnrollAccount/enroll_account.py -O enroll_account.py",
 					"cwd":"/home/ec2-user",
 					"ignoreErrors":"true"
 				},
