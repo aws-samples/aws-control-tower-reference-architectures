@@ -136,10 +136,19 @@ def get_provisioned_product_status(prov_prod_name):
     output = None
     pp_list = search_provisioned_product_full_list()
 
-    for item in pp_list:
-        if item['Name'] == prov_prod_name:
-            output = item['Status']
+    for retries in range(5):
+        for item in pp_list:
+            if item['Name'] == prov_prod_name:
+                output = item['Status']
+                break
+        if output:
+            # Break out of retry loop if output was populated by inner loop
             break
+        else:
+            # Populate pp_list again if prov_prod_name wasn't found
+            print(f"Retrying provisioned product list...retry#{retries+1}")
+            sleep(5)
+            pp_list = search_provisioned_product_full_list()
 
     if not output:
         error_and_exit('Unable to find any provisioned products: ' +
