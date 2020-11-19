@@ -14,7 +14,10 @@
 # HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-# 
+#
+'''
+Update existing AWS Control Tower accounts (SC Provisioned Products) sequentially.
+'''
 import logging
 from time import sleep
 from random import randint
@@ -24,6 +27,11 @@ import boto3
 
 LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.INFO)
+
+SESSION = boto3.session.Session()
+REGION_NAME = SESSION.region_name
+SC = SESSION.client('servicecatalog', region_name=REGION_NAME)
+ORG = SESSION.client('organizations', region_name=REGION_NAME)
 
 def error_and_exit(error_msg='ERROR'):
     '''Throw error and exit'''
@@ -46,8 +54,8 @@ def get_product_id():
 
     try:
         search_list = SC.search_products_as_admin(Filters=filters)['ProductViewDetails']
-    except Exception as e:
-        error_and_exit('Unable to find Product Id: ' + str(e))
+    except Exception as exe:
+        error_and_exit('Unable to find Product Id: ' + str(exe))
 
     for item in search_list:
         if key in item:
@@ -69,8 +77,8 @@ def get_provisioning_artifact_id(prod_id):
 
     try:
         pa_list = SC.describe_product(Id=prod_id)['ProvisioningArtifacts']
-    except Exception as e:
-        error_and_exit("Unable to find the Provisioned Artifact Id: " + str(e))
+    except Exception as exe:
+        error_and_exit("Unable to find the Provisioned Artifact Id: " + str(exe))
 
     if len(pa_list) > 0:
         output = pa_list[-1]['Id']
@@ -116,8 +124,8 @@ def update_sc_provisioned_product(pp_id, pa_id, prod_id, input_params, lang='en'
                             ProvisioningArtifactId=pa_id, ProvisionedProductId=pp_id, \
                             ProvisioningParameters=input_params, \
                             UpdateToken=str(randint(1000000000000, 9999999999999)))
-    except Exception as e:
-        error_and_continue('SC product update failed: ' + str(e))
+    except Exception as exe:
+        error_and_continue('SC product update failed: ' + str(exe))
 
     return result
 
@@ -127,8 +135,8 @@ def list_org_roots():
     value = None
     try:
         root_info = ORG.list_roots()
-    except Exception as e:
-        error_and_exit('Script should run on Organization root only: ' + str(e))
+    except Exception as exe:
+        error_and_exit('Script should run on Organization root only: ' + str(exe))
 
     if 'Roots' in root_info:
         value = root_info['Roots'][0]['Id']
@@ -145,8 +153,8 @@ def list_all_ou():
     try:
         child_dict = ORG.list_children(ParentId=root_id, ChildType='ORGANIZATIONAL_UNIT')
         child_list = child_dict['Children']
-    except Exception as e:
-        error_and_exit('Unable to get children list' + str(e))
+    except Exception as exe:
+        error_and_exit('Unable to get children list' + str(exe))
 
     while 'NextToken' in child_dict:
         next_token = child_dict['NextToken']
@@ -154,8 +162,8 @@ def list_all_ou():
             child_dict = ORG.list_children(ParentId=root_id, \
                         ChildType='ORGANIZATIONAL_UNIT', NextToken=next_token)
             child_list += child_dict['Children']
-        except Exception as e:
-            error_and_exit('Unable to get complete children list' + str(e))
+        except Exception as exe:
+            error_and_exit('Unable to get complete children list' + str(exe))
 
     for item in child_list:
         org_info.append(item['Id'])
@@ -165,6 +173,23 @@ def list_all_ou():
 
     return org_info
 
+def list_of_accounts_in_ou(ou_id):
+    '''Return list of accounts, and email-Ids'''
+
+    result = list()
+
+    try:
+        result = ORG.list_accounts_for_parent(ParentId=ou_id)['Accounts']
+        org_paginator = ORG.get_paginator('list_accounts_for_parent')
+        org_page_iterator = org_paginator.paginate(ParentId=ou_id)
+    except Exception as exe:
+        error_and_exit('Unable to get Accounts list: ' + str(exe))
+
+    for page in org_page_iterator:
+        result += page['Accounts']
+
+    return result
+
 def get_ou_name(acct_id):
     '''Retrieve the OU name'''
 
@@ -172,17 +197,14 @@ def get_ou_name(acct_id):
     ou_map = {}
     output = None
 
-    for ou in ou_list:
+    for ou_id in ou_list:
         try:
-            ou_info = ORG.describe_organizational_unit(OrganizationalUnitId=ou)
+            ou_info = ORG.describe_organizational_unit(OrganizationalUnitId=ou_id)
             ou_name = ou_info['OrganizationalUnit']['Name']
-        except Exception as e:
-            error_and_exit('Unable to get the OU information' + str(e))
+        except Exception as exe:
+            error_and_exit('Unable to get the OU information' + str(exe))
 
-        try:
-            acct_list = ORG.list_accounts_for_parent(ParentId=ou)['Accounts']
-        except Exception as e:
-            error_and_exit('Unable to get list of accounts' + str(e))
+        acct_list = list_of_accounts_in_ou(ou_id)
 
         for acct in acct_list:
             ou_map[acct['Id']] = ou_name
@@ -201,8 +223,8 @@ def get_account_mapping(email_id):
 
     try:
         acct_list = list_all_accounts()
-    except Exception as e:
-        error_and_exit('Failed to get list of accounts' + str(e))
+    except Exception as exe:
+        error_and_exit('Failed to get list of accounts' + str(exe))
 
     for acct in acct_list:
         if acct['Email'] == email_id:
@@ -223,18 +245,19 @@ def search_provisioned_product_full_list():
     try:
         pp_dict = SC.search_provisioned_products(AccessLevelFilter=filters)
         pp_list = pp_dict['ProvisionedProducts']
-    except Exception as e:
-        error_and_exit('Failed to get provisioned products list. ' + str(e))
+    except Exception as exe:
+        error_and_exit('Failed to get provisioned products list. ' + str(exe))
 
     while 'NextPageToken' in pp_dict:
         next_token = pp_dict['NextPageToken']
         try:
-            pp_dict = SC.search_provisioned_products(AccessLevelFilter=filters, PageToken=next_token)
+            pp_dict = SC.search_provisioned_products(AccessLevelFilter=filters,
+                                                     PageToken=next_token)
             pp_list += pp_dict['ProvisionedProducts']
-        except Exception as e:
-            error_and_exit('Failed to get complete provisioned products list: ' + str(e))
+        except Exception as exe:
+            error_and_exit('Failed to get complete provisioned products list: ' + str(exe))
 
-    return(pp_list)
+    return pp_list
 
 def search_provisioned_products():
     '''List the provisioned products that matches the filter'''
@@ -242,7 +265,7 @@ def search_provisioned_products():
     ct_pp_list = list()
     error_list = list()
     transit_list = list()
-    
+
     pp_list = search_provisioned_product_full_list()
 
     for item in pp_list:
@@ -327,18 +350,18 @@ def get_acct_name(pp_id):
 
     return(acct_name, email_id, ou_name)
 
-def tag_org_account(acct_no):
+def tag_org_account(acct_no, key):
     '''Tag an account with in the organization'''
 
     output = None
     result = dict()
-    tags = [{"Key": "PP_UPDATE", "Value": "TRUE"}]
+    tags = [{"Key": key, "Value": "TRUE"}]
 
     try:
         result = ORG.tag_resource(ResourceId=acct_no, Tags=tags)
         print('Tagged resource {}'.format(acct_no))
-    except Exception as e:
-        error_and_continue('Unable to Tag the resource: {}'.format(str(e)))
+    except Exception as exe:
+        error_and_continue('Unable to Tag the resource: {}'.format(str(exe)))
 
     if result:
         output = result['ResponseMetadata']['HTTPStatusCode']
@@ -353,29 +376,29 @@ def list_tags(acct_no):
 
     try:
         tag_dict = ORG.list_tags_for_resource(ResourceId=acct_no)
-    except Exception as e:
-        error_and_continue('Unable to list tags for {}:{}'.format(acct_no, str(e)))
+    except Exception as exe:
+        error_and_continue('Unable to list tags for {}:{}'.format(acct_no, str(exe)))
 
     if 'Tags' in tag_dict:
         output = tag_dict['Tags']
 
     return output
 
-def is_resource_tagged(acct_no, tag_name='PP_UPDATE'):
+def is_resource_tagged(acct_no, key):
     '''Return True if the resource is Tagged'''
 
     output = False
     tag_list = list_tags(acct_no)
 
     for item in tag_list:
-        if item['Key'] == tag_name:
+        if item['Key'] == key:
             output = True
 
     return output
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(prog='update_pp.py', usage='%(prog)s [-eflb]', description= \
+    parser = argparse.ArgumentParser(prog='update_pp.py', usage='%(prog)s [-eflbt]', description= \
                                     'Update all provisioned Account Factory products sequentially.')
     parser.add_argument("-e", "--email", type=str, default="noreply@example.com", \
                         help="SSOUserEmail")
@@ -385,15 +408,15 @@ if __name__ == '__main__':
                         help="SSOUserLastName")
     parser.add_argument("-b", "--blist", nargs='+', default="347805172924", \
                         help="List of accounts to blacklist")
+    parser.add_argument("-t", "--tagkey", type=str, default="ACCT_UPDATE", \
+                        help="Tag used to track account update status")
 
     args = parser.parse_args()
     SSOUserEmail = args.email
     SSOUserFirstName = args.fname
     SSOUserLastName = args.lname
     blacklist = args.blist
-
-    SC = boto3.client('servicecatalog')
-    ORG = boto3.client('organizations')
+    tag_key = args.tagkey
 
     # Get list of Service Catalog provisioned products in AVAILABLE / ERROR state
     (acct_map, error_list, transit_list) = get_provisioned_product_list()
@@ -419,7 +442,7 @@ if __name__ == '__main__':
     else:
         for acct_no in acct_map:
             pp_status = 'UNDER_CHANGE'
-            if not is_resource_tagged(acct_no) and acct_no not in blacklist:
+            if not is_resource_tagged(acct_no, tag_key) and acct_no not in blacklist:
                 sleep_time = 360
                 print('Updating Provisioned Account : {}'.format(acct_no))
 
@@ -457,7 +480,7 @@ if __name__ == '__main__':
 
                     if pp_status == 'AVAILABLE':
                         print('SUCCESS: {} updated'.format(acct_no))
-                        tag_org_account(acct_no)
+                        tag_org_account(acct_no, tag_key)
                 else:
                     LOGGER.warning('No valid information found for {}'.format(acct_no))
 
