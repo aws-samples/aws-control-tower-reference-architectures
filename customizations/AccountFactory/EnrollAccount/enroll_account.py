@@ -79,7 +79,7 @@ def get_product_id():
 
     try:
         search_list = SC.search_products_as_admin(Filters=filters)['ProductViewDetails']
-    except Exception as exe:
+    except ClientError as exe:
         error_and_exit('Unable to find Product Id: ' + str(exe))
 
     for item in search_list:
@@ -103,7 +103,7 @@ def get_provisioning_artifact_id(prod_id):
 
     try:
         pa_list = SC.describe_product_as_admin(Id=prod_id)['ProvisioningArtifactSummaries']
-    except Exception as exe:
+    except ClientError as exe:
         error_and_exit("Unable to find the Provisioned Artifact Id: " +
                        str(exe))
 
@@ -168,7 +168,7 @@ def provision_sc_product(prod_id, pa_id, prov_prod_name, input_params):
                                       ProvisionedProductName=prov_prod_name,
                                       ProvisioningParameters=input_params,
                                       ProvisionToken=str(randint(1000000000000, 9999999999999)))
-    except Exception as exe:
+    except ClientError as exe:
         LOGGER.error('SC product provisioning failed: %s', str(exe))
 
     return result
@@ -183,7 +183,7 @@ def search_provisioned_product_full_list():
     try:
         pp_dict = SC.search_provisioned_products(AccessLevelFilter=filters)
         pp_list = pp_dict['ProvisionedProducts']
-    except Exception as exe:
+    except ClientError as exe:
         error_and_exit('Failed to get provisioned products list. ' + str(exe))
 
     while 'NextPageToken' in pp_dict:
@@ -192,7 +192,7 @@ def search_provisioned_product_full_list():
             pp_dict = SC.search_provisioned_products(AccessLevelFilter=filters,
                                                      PageToken=next_token)
             pp_list += pp_dict['ProvisionedProducts']
-        except Exception as exe:
+        except ClientError as exe:
             error_and_exit('Failed to get provisioned products full list: ' +
                            str(exe))
 
@@ -262,7 +262,7 @@ def does_stack_set_exists(ss_name):
     try:
         cft_paginator = CFT.get_paginator('list_stack_sets')
         cft_page_iterator = cft_paginator.paginate()
-    except Exception as exe:
+    except ClientError as exe:
         LOGGER.error('Unable to list stacksets %s', str(exe))
 
     for page in cft_page_iterator:
@@ -289,7 +289,7 @@ def add_stack_instance(ss_name, region_name, ou_id):
                                                 Regions=[region_name],
                                                 DeploymentTargets=targets,
                                                 OperationPreferences=op_prefer)
-        except Exception as exe:
+        except ClientError as exe:
             raise exe
     else:
         LOGGER.error('StackSet %s does not exist', ss_name)
@@ -303,7 +303,7 @@ def check_ss_status(ss_name, op_id):
     try:
         result = CFT.describe_stack_set_operation(StackSetName=ss_name,
                                                   OperationId=op_id)
-    except Exception as exe:
+    except ClientError as exe:
         LOGGER.error('Something went wrong: %s', str(exe))
         result = None
 
@@ -322,7 +322,7 @@ def list_from_stack_instances(ss_name, key='Account'):
     try:
         cft_paginator = CFT.get_paginator('list_stack_instances')
         cft_page_iterator = cft_paginator.paginate(StackSetName=ss_name)
-    except Exception as exe:
+    except ClientError as exe:
         LOGGER.error('Unable to list stack instances: %s', str(exe))
 
     for page in cft_page_iterator:
@@ -345,7 +345,7 @@ def does_ct_role_exists(account_id):
     try:
         STS.assume_role(RoleArn=role_arn, RoleSessionName=session_name)
         result = True
-    except Exception:
+    except ClientError as exe:
         result = False
 
     return result
@@ -358,7 +358,8 @@ def create_crossaccount_role(account_id, region, master_id):
     '''
 
     ou_id = get_parent_for_account(account_id)
-    ss_url = 'https://marketplace-sa-resources.s3.amazonaws.com/ct-blogs-content/AWSControlTowerExecution.yml'
+    ss_bucket = 'marketplace-sa-resources.s3.amazonaws.com/ct-blogs-content'
+    ss_url = 'https://' + ss_bucket + '/AWSControlTowerExecution.yml'
     ss_deploy = {'Enabled': True, 'RetainStacksOnAccountRemoval': True}
     ss_name = 'MyCrossAccountRole-StackSet'
     ss_param = [{'ParameterKey': 'AdministratorAccountId', 'ParameterValue': master_id}]
@@ -375,7 +376,7 @@ def create_crossaccount_role(account_id, region, master_id):
                                       Parameters=ss_param,
                                       PermissionModel='SERVICE_MANAGED',
                                       AutoDeployment=ss_deploy)
-    except Exception as exe:
+    except ClientError as exe:
         error_msg = str(exe.response['Error']['Message'])
         if 'StackSet already exists' in error_msg:
             LOGGER.info('StackSet already exists, Adding stack instance')
@@ -476,7 +477,7 @@ def list_org_roots():
     value = None
     try:
         root_info = ORG.list_roots()
-    except Exception as exe:
+    except ClientError as exe:
         error_and_exit('Script should run on Organization root only: ' +
                        str(exe))
 
@@ -497,7 +498,7 @@ def list_all_ou():
         child_dict = ORG.list_children(ParentId=root_id,
                                        ChildType='ORGANIZATIONAL_UNIT')
         child_list = child_dict['Children']
-    except Exception as exe:
+    except ClientError as exe:
         error_and_exit('Unable to get children list' + str(exe))
 
     while 'NextToken' in child_dict:
@@ -507,7 +508,7 @@ def list_all_ou():
                                            ChildType='ORGANIZATIONAL_UNIT',
                                            NextToken=next_token)
             child_list += child_dict['Children']
-        except Exception as exe:
+        except ClientError as exe:
             error_and_exit('Unable to get complete children list' + str(exe))
 
     for item in child_list:
@@ -530,7 +531,7 @@ def get_ou_map():
             ou_describe = ORG.describe_organizational_unit(OrganizationalUnitId=ou_item)
             ou_info = ou_describe['OrganizationalUnit']
             ou_map[ou_info['Name']] = ou_info['Id']
-        except Exception as exe:
+        except ClientError as exe:
             error_and_exit('Unable to get the OU information' + str(exe))
 
     return ou_map
@@ -560,6 +561,20 @@ def get_ou_details(ou_name=None, ou_id=None):
     return output
 
 
+def does_ou_exists(ou_object):
+    '''Return True if OU exists'''
+
+    ou_id_matched = bool(match('^ou-[0-9a-z]{4,32}-[a-z0-9]{8,32}$', ou_object))
+    output = True
+
+    if not ou_id_matched:
+        ou_map = get_ou_map()
+        if ou_object not in ou_map.keys():
+            output = False
+
+    return output
+
+
 def list_all_accounts():
     '''Return list of all accounts in the organization'''
 
@@ -572,7 +587,7 @@ def list_all_accounts():
             org_paginator = ORG.get_paginator('list_accounts')
             org_page_iterator = org_paginator.paginate()
             throttle_retry = False
-        except Exception as exe:
+        except ClientError as exe:
             error_msg = str(exe.response['Error']['Code'])
             if error_msg == 'ThrottlingException':
                 retry_count += 1
@@ -618,7 +633,7 @@ def get_parent_for_account(account_id):
 
     try:
         parent = ORG.list_parents(ChildId=account_id)['Parents']
-    except Exception as exe:
+    except ClientError as exe:
         raise exe
 
     if parent:
@@ -645,7 +660,7 @@ def list_of_accounts_in_ou(ou_id):
         result = ORG.list_accounts_for_parent(ParentId=ou_id)['Accounts']
         org_paginator = ORG.get_paginator('list_accounts_for_parent')
         org_page_iterator = org_paginator.paginate(ParentId=ou_id)
-    except Exception as exe:
+    except ClientError as exe:
         error_and_exit('Unable to get Accounts list: ' + str(exe))
 
     for page in org_page_iterator:
@@ -677,7 +692,7 @@ def get_org_id():
     try:
         value = ORG.describe_organization()['Organization']['Id']
         return value
-    except Exception as exe:
+    except ClientError as exe:
         error_and_exit('Unable to get organization id: ' + str(exe))
 
 
@@ -725,7 +740,7 @@ def list_configuration_recorders(client):
         recorders = out['ConfigurationRecorders']
         for recorder in recorders:
             result.append(recorder['name'])
-    except Exception as exe:
+    except ClientError as exe:
         LOGGER.error('Unable to list Config Recorders: %s', str(exe))
 
     return result
@@ -741,7 +756,7 @@ def list_delivery_channels(client):
         channels = out['DeliveryChannels']
         for channel in channels:
             result.append(channel['name'])
-    except Exception as exe:
+    except ClientError as exe:
         LOGGER.error('Unable to list Delivery Channels: %s', str(exe))
 
     return result
@@ -890,7 +905,7 @@ def run_prechecks(data):
                 precheck_account_id['ErrCount'] = precheck_account_id['ErrCount'] + 1
 
             else:
-                # Check for existence of any Config Recorder/Delivery Channel
+                # Check for existe∂nce of any Config Recorder/Delivery Channel
                 target_session = get_sts_session(account_id, get_org_id())
 
                 if target_session:
@@ -959,9 +974,15 @@ if __name__ == '__main__':
     MANAGED_OU = ARGS.ou
     ROOT_LEVEL = ARGS.create_role
 
+    if not does_ou_exists(MANAGED_OU):
+        error_and_exit('Destination OU do not exist')
+
     if ARGS.unou:
         UNMANAGED_OU = ARGS.unou
-        DATA = get_accounts_in_ou(UNMANAGED_OU, MANAGED_OU)
+        if does_ou_exists(UNMANAGED_OU):
+            DATA = get_accounts_in_ou(UNMANAGED_OU, MANAGED_OU)
+        else:
+            error_and_exit('Source OU do not exist')
     elif ARGS.email:
         DATA = get_account_info(MANAGED_OU, account_email=ARGS.email)
     elif ARGS.aid:
@@ -990,7 +1011,7 @@ if __name__ == '__main__':
                     COUNT += acct_value['ErrCount']
 
         if COUNT == 0:
-            LOGGER.info(INFO_STYLE + 'PRECHECK SUCCEEDED. Proceeding' +
+            LOGGER.info(INFO_STYLE + '%s PRECHECK SUCCEEDED. Proceeding: %s' +
                         RESET_STYLE)
             start_enrolling_accounts(DATA)
         else:
