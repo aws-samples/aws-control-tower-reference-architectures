@@ -30,9 +30,6 @@ from re import match, sub
 import boto3
 from botocore.exceptions import ClientError
 
-
-CT_REGIONS = ['us-east-1', 'us-east-2', 'us-west-2',
-              'eu-west-1', 'ap-southeast-2']
 ROLE_NAMES = ['AWSControlTowerExecution',
               'OrganizationAccountAccessRole',
               'AWSCloudFormationStackSetExecutionRole']
@@ -274,6 +271,23 @@ def does_stack_set_exists(ss_name):
 
     return result
 
+def get_active_ct_region_list(ss_name='AWSControlTowerBP-BASELINE-CONFIG'):
+    '''
+    Generate list of active regions based on the existing regions 
+    in AWSControlTowerBP-BASELINE-CONFIG stackset 
+    '''
+
+    region_list  = list()
+
+    if does_stack_set_exists(ss_name):
+        # Check for Stack Set
+        instances = CFT.list_stack_instances(StackSetName=ss_name)['Summaries']
+        for instance in instances:
+            region_list.append(instance['Region'])
+    else:
+        LOGGER.error('Unable to find %s', ss_name)
+
+    return list(set(region_list))
 
 def add_stack_instance(ss_name, region_name, ou_id):
     '''Add stack instance to the existing StackSet'''
@@ -771,7 +785,8 @@ def list_config_in_ct_regions(session):
 
     result = dict()
 
-    for region in CT_REGIONS:
+    ct_regions = get_active_ct_region_list()
+    for region in ct_regions:
 
         client = session.client('config', region_name=region)
 
