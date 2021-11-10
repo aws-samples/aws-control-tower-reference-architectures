@@ -1,0 +1,104 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Control Tower clear AWS SSO assignments (fdp-c1earcsso)
+Parameters:
+  LambdaSourceS3Bucket:
+    Description: Amazon S3 Bucket to store the lambda source. Bucket should be in the same AWS Region where lambda is installed.
+    Type: String
+    Default: marketplace-sa-resources-ct
+    ConstraintDescription:
+      "The bucket name can include numbers, lowercase letters, uppercase letters,
+      and hyphens (-). It cannot start or end with a hyphen (-)."
+    AllowedPattern: "^[0-9a-zA-Z]+([0-9a-zA-Z-]*[0-9a-zA-Z])*$"
+Conditions:
+  UsingDefaultBucket: !Equals [!Ref LambdaSourceS3Bucket, "marketplace-sa-resources-ct"]
+Resources:
+  ClearMappingsLambdaRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "Resources can not be scoped down further for the APIs allowed"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+            Condition: {}
+      Path: /
+      Policies:
+        - PolicyName: inline-policy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'sts:GetCallerIdentity'
+                  - 'identitystore:ListUsers'
+                  - 'identitystore:ListGroups'
+                  - 'identitystore:DescribeGroup'
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:DescribeMeticFilters'
+                  - 'organizations:ListAccounts'
+                  - 'iam:GetRole'
+                  - 'iam:ListAttachedRolePolicies'
+                  - 'iam:ListRolePolicies'
+                  - 'sso:DeleteAccountAssignment'
+                  - 'sso:DeletePermissionSet'
+                  - 'sso:DescribeAccountAssignmentDeletionStatus'
+                  - 'sso:DescribePermissionSet'
+                  - 'sso:ListAccountsForProvisionedPermissionSet'
+                  - 'sso:ListAccountAssignments'
+                  - 'sso:ListInstances'
+                  - 'sso:ListPermissionSets'
+                Resource:  '*'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  ClearMappingsLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket:
+          !If [
+            UsingDefaultBucket,
+            !Sub "${LambdaSourceS3Bucket}-${AWS::Region}",
+            !Ref LambdaSourceS3Bucket,
+          ]
+        S3Key: ct-blogs-content/clear_ct_sso_mappings_lambda.zip
+      Handler: clear_ct_sso_mappings.lambda_handler
+      Role: !GetAtt ClearMappingsLambdaRole.Arn
+      Runtime: python3.7
+      Timeout: 300
+      MemorySize: 256
+
+  ClearSSOMappingsOnUpdateLandingZone:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Capture Control Tower UpdateLandingZone Event and clear AWS SSO mappings.
+      EventPattern:
+        detail:
+          eventName:
+          - UpdateLandingZone
+          eventSource:
+          - controltower.amazonaws.com
+        detail-type:
+        - AWS Service Event via CloudTrail
+        source:
+        - aws.controltower
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt "ClearMappingsLambda.Arn"
+          Id: IDCaptureUpdateLandingZoneEvents
+
+  PermissionForEventsToInvokeLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt "ClearMappingsLambda.Arn"
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt "ClearSSOMappingsOnUpdateLandingZone.Arn"
