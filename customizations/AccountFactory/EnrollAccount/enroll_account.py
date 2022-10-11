@@ -238,14 +238,14 @@ def get_provisioned_product_list():
     return(pp_map, error_list, transit_list)
 
 
-def generate_provisioned_product_name(data):
+def generate_provisioned_product_name(data, account_id):
     ''' Generate Provisioned product name from data '''
 
     result = None
 
     for i in data:
         if i['Key'] == 'AccountName':
-            result = 'Enroll-Account-' + sub('[^A-Za-z0-9]+', '-', i['Value'])
+            result = 'Enroll-Account-' + account_id
             break
 
     return result
@@ -578,12 +578,14 @@ def get_ou_details(ou_name=None, ou_id=None):
 def does_ou_exists(ou_object):
     '''Return True if OU exists'''
 
-    ou_id_matched = bool(match('^ou-[0-9a-z]{4,32}-[a-z0-9]{8,32}$', ou_object))
+    ou_id = ou_object.split('(')[1].split(')')[0]
+    
+    ou_id_matched = bool(match('^ou-[0-9a-z]{4,32}-[a-z0-9]{8,32}$', ou_id))
     output = True
 
     if not ou_id_matched:
         ou_map = get_ou_map()
-        if ou_object not in ou_map.keys():
+        if ou_id not in ou_map.values():
             output = False
 
     return output
@@ -841,7 +843,7 @@ def start_enrolling_accounts(data):
 
             if role_exists:
 
-                pp_name = generate_provisioned_product_name(data[account_id])
+                pp_name = generate_provisioned_product_name(data[account_id], account_id)
                 p_status = provision_sc_product(prod_id, pa_id, pp_name,
                                                 data[account_id])
 
