@@ -972,7 +972,7 @@ def check_for_role_exception():
 
 if __name__ == '__main__':
     PARSER = argparse.ArgumentParser(prog='enroll_account.py',
-                                     usage='%(prog)s -o -u|-e|-i [-c|-V]',
+                                     usage='%(prog)s -o -u|-e|-i [-c|-V|-n]',
                                      description='Enroll existing accounts to AWS Control Tower.')
     PARSER.add_argument("-o", "--ou", type=str, required=True, help="Target Registered OU")
     PARSER.add_argument("-u", "--unou", type=str, help="Origin UnRegistered OU")
@@ -984,6 +984,8 @@ if __name__ == '__main__':
                         help="Create Roles on Root Level")
     PARSER.add_argument("-V", "--verify_only", action='store_true',
                         help="Pre-checks only. No account enrollment initiated")
+    PARSER.add_argument("-n", "--nested_ou", action='store_true',
+                        help="Flag to enroll account in Nested OU, need OU id. Also valid for enrolling account in any OU under root")
 
     ARGS = PARSER.parse_args()
     MANAGED_OU = ARGS.ou
@@ -991,6 +993,14 @@ if __name__ == '__main__':
 
     if not does_ou_exists(MANAGED_OU):
         error_and_exit('Destination OU do not exist')
+    if ARGS.nested_ou:
+        ou_id_matched = bool(match('^ou-[0-9a-z]{4,32}-[a-z0-9]{8,32}$', MANAGED_OU))
+        if not ou_id_matched:
+            error_and_exit('Provide OU id instead of OU Name when specifying -n option ')
+        else:
+            output = ORG.describe_organizational_unit(OrganizationalUnitId=MANAGED_OU)
+            OU_NAME=output['OrganizationalUnit']['Name']
+            MANAGED_OU=OU_NAME+" ("+MANAGED_OU+")"
 
     if ARGS.unou:
         UNMANAGED_OU = ARGS.unou
