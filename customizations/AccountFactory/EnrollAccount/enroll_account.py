@@ -996,7 +996,7 @@ if __name__ == '__main__':
     if ARGS.nested_ou:
         ou_id_matched = bool(match('^ou-[0-9a-z]{4,32}-[a-z0-9]{8,32}$', MANAGED_OU))
         if not ou_id_matched:
-            error_and_exit('Provide OU id instead of OU Name when specifying -n option ')
+            error_and_exit('Invalid OU id detected. Make sure to provide OU id instead of OU Name')
         else:
             output = ORG.describe_organizational_unit(OrganizationalUnitId=MANAGED_OU)
             OU_NAME=output['OrganizationalUnit']['Name']

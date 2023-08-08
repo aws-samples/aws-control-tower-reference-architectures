@@ -5,16 +5,22 @@ This python program `enroll_account.py` provided under the open-source license t
 
 <pre style="padding-left: 40px;"><code class="lang-bash"><strong>usage: enroll_account.py -o -u|-e|-i -c
 </strong>
+
+usage: enroll_account.py -o -u|-e|-i [-c|-V|-n]
+
 Enroll existing accounts to AWS Control Tower.
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
   -o OU, --ou OU        Target Registered OU
   -u UNOU, --unou UNOU  Origin UnRegistered OU
   -e EMAIL, --email EMAIL
-                        AWS account email address to enroll in to AWS Control Tower
-  -i AID, --aid AID     AWS account ID to enroll in to AWS Control Tower
+                        AWS account email-address to enroll in to AWS Control Tower
+  -i AID, --aid AID     AWS Account Id to enroll in to AWS Control Tower
   -c, --create_role     Create Roles on Root Level
+  -V, --verify_only     Pre-checks only. No account enrollment initiated
+  -n, --nested_ou       Flag to enroll account in Nested OU, need OU id. Also valid for enrolling account in any OU under root
+
 </code></pre>
 
 ### Additional Information
